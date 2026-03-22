@@ -26,37 +26,24 @@
   .btn-test { background: #E24B4A; color: #fff; }
   .btn-stop { background: #1D9E75; color: #fff; display: none; }
   .btn:hover { opacity: 0.88; }
-  .status { text-align: center; font-size: 13px; color: #666; margin-bottom: 1rem; min-height: 18px; }
-  .alarms-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; margin-top: 0.5rem; }
+  .status { text-align: center; font-size: 13px; color: #888; margin-bottom: 1rem; min-height: 18px; }
+  .alarms-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
   .alarm-item { display: flex; justify-content: space-between; align-items: center; background: #161616; border: 1px solid #222; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; }
   .alarm-time { font-family: monospace; font-size: 18px; font-weight: 700; }
   .alarm-meta { font-size: 12px; color: #666; margin-top: 2px; }
   .alarm-del { background: none; border: none; color: #444; font-size: 18px; cursor: pointer; padding: 0 4px; }
   .alarm-del:hover { color: #E24B4A; }
+  .sound-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .sound-btn { background: #0a0a0a; border: 1px solid #333; border-radius: 10px; color: #fff; font-size: 12px; padding: 8px; cursor: pointer; text-align: center; transition: background 0.15s; }
+  .sound-btn:hover { background: #222; border-color: #555; }
   .ringing { animation: shake 0.25s infinite; }
   @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
-
-  /* 
-  =============================================
-  HOW TO ADD YOUR OWN SOUNDS FROM MYINSTANTS
-  =============================================
-  1. Go to myinstants.com and find a sound you want
-  2. Right-click the orange PLAY button → "Copy link address"
-     OR right-click → "Save audio as" to download the MP3
-  3. Add the URL or file path to the SOUND_URLS array below
-  4. The app will randomly pick from your list each time an alarm fires
-
-  Example URLs look like:
-  "https://www.myinstants.com/media/sounds/your-sound.mp3"
-  =============================================
-  */
 </style>
 </head>
 <body>
 <div class="app">
   <h1>Chaos Alarm</h1>
   <p class="sub">wake up. no choice.</p>
-
   <div class="clock" id="clock">00:00:00</div>
 
   <div class="card">
@@ -69,11 +56,16 @@
   </div>
 
   <div class="card">
-    <label>number of alarms — <span id="count-label">50</span></label>
+    <label>number of alarms — <span id="count-label">10</span></label>
     <div class="slider-row">
-      <input type="range" id="alarm-count" min="1" max="50" value="50" step="1" />
-      <span class="slider-val" id="count-val">50</span>
+      <input type="range" id="alarm-count" min="1" max="50" value="10" step="1" />
+      <span class="slider-val" id="count-val">10</span>
     </div>
+  </div>
+
+  <div class="card">
+    <label>preview individual sounds</label>
+    <div class="sound-grid" id="sound-grid"></div>
   </div>
 
   <button class="btn btn-add" onclick="addAlarm()">+ schedule alarm</button>
@@ -81,84 +73,209 @@
   <button class="btn btn-stop" id="btn-stop" onclick="stopChaos()">STOP THE CHAOS</button>
 
   <div class="status" id="status"></div>
-
   <div class="alarms-label" id="alarms-label" style="display:none">scheduled alarms</div>
   <div id="alarms-list"></div>
 </div>
 
 <script>
-// =============================================
-// ADD YOUR MYINSTANTS SOUND URLS HERE
-// =============================================
-const SOUND_URLS = [
-  "https://pixabay.com/sound-effects/film-special-effects-sus-meme-sound-181271/"
-  // Paste your MP3 URLs here like:
-  // "https://www.myinstants.com/media/sounds/example.mp3",
-  // "https://www.myinstants.com/media/sounds/another.mp3",
-];
-// If no URLs are added, the app uses generated beep sounds instead
-// =============================================
-
-const alarms = [];
 let audioCtx = null;
 let chaosInterval = null;
-let activeSources = [];
+const alarms = [];
 
-function getCtx() {
+function ctx() {
   if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   return audioCtx;
 }
 
-function playBeep(freq, type, delay, dur) {
-  const ctx = getCtx();
-  const osc = ctx.createOscillator();
-  const gain = ctx.createGain();
-  osc.connect(gain);
-  gain.connect(ctx.destination);
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
-  osc.frequency.exponentialRampToValueAtTime(freq * 1.8, ctx.currentTime + delay + 0.15);
-  osc.frequency.exponentialRampToValueAtTime(freq * 0.8, ctx.currentTime + delay + 0.3);
-  gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
-  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
-  osc.start(ctx.currentTime + delay);
-  osc.stop(ctx.currentTime + delay + dur + 0.05);
-  activeSources.push(osc);
-}
+// MEME SOUNDS — all generated via Web Audio API
+// myinstants/external MP3s get blocked by CORS when loaded from a local HTML file
+// These are faithful recreations of the most iconic meme sounds
 
-function playUrl(url, delay) {
-  const ctx = getCtx();
-  fetch(url)
-    .then(r => r.arrayBuffer())
-    .then(buf => ctx.decodeAudioData(buf))
-    .then(decoded => {
-      const source = ctx.createBufferSource();
-      const gain = ctx.createGain();
-      source.buffer = decoded;
-      source.connect(gain);
-      gain.connect(ctx.destination);
-      gain.gain.setValueAtTime(0.7, ctx.currentTime + delay);
-      source.start(ctx.currentTime + delay);
-      activeSources.push(source);
-    })
-    .catch(() => {});
-}
+const SOUNDS = [
+  {
+    name: "vine boom",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(90, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(18, c.currentTime + 0.6);
+      g.gain.setValueAtTime(1.5, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.7);
+      o.start(); o.stop(c.currentTime + 0.8);
+    }
+  },
+  {
+    name: "bruh",
+    play: function() {
+      const c = ctx();
+      [160, 130, 110, 90, 75].forEach((f, i) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination);
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f, c.currentTime + i * 0.06);
+        g.gain.setValueAtTime(0.12, c.currentTime + i * 0.06);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.06 + 0.3);
+        o.start(c.currentTime + i * 0.06);
+        o.stop(c.currentTime + i * 0.06 + 0.35);
+      });
+    }
+  },
+  {
+    name: "fart",
+    play: function() {
+      const c = ctx();
+      const size = c.sampleRate * 0.6;
+      const buf = c.createBuffer(1, size, c.sampleRate);
+      const d = buf.getChannelData(0);
+      for (let i = 0; i < size; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / size, 1.2);
+      const s = c.createBufferSource(), g = c.createGain(), f = c.createBiquadFilter();
+      f.type = 'lowpass'; f.frequency.value = 280;
+      s.buffer = buf; s.connect(f); f.connect(g); g.connect(c.destination);
+      g.gain.setValueAtTime(4, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.6);
+      s.start(); s.stop(c.currentTime + 0.7);
+    }
+  },
+  {
+    name: "airhorn",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'sawtooth';
+      o.frequency.setValueAtTime(233, c.currentTime);
+      o.frequency.linearRampToValueAtTime(470, c.currentTime + 0.04);
+      g.gain.setValueAtTime(0.6, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.9);
+      o.start(); o.stop(c.currentTime + 1.0);
+    }
+  },
+  {
+    name: "sad violin",
+    play: function() {
+      const c = ctx();
+      [392, 370, 349, 330, 311].forEach((f, i) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination);
+        o.type = 'sawtooth';
+        o.frequency.setValueAtTime(f, c.currentTime + i * 0.22);
+        g.gain.setValueAtTime(0.1, c.currentTime + i * 0.22);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + i * 0.22 + 0.25);
+        o.start(c.currentTime + i * 0.22);
+        o.stop(c.currentTime + i * 0.22 + 0.3);
+      });
+    }
+  },
+  {
+    name: "dun dun dun",
+    play: function() {
+      const c = ctx();
+      [[220, 0], [220, 0.28], [165, 0.56]].forEach(([f, t]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination);
+        o.type = 'square';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.3, c.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.26);
+        o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.3);
+      });
+    }
+  },
+  {
+    name: "bonk",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(700, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(80, c.currentTime + 0.18);
+      g.gain.setValueAtTime(0.8, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.22);
+      o.start(); o.stop(c.currentTime + 0.25);
+    }
+  },
+  {
+    name: "error",
+    play: function() {
+      const c = ctx();
+      [[440, 0], [330, 0.14], [220, 0.28]].forEach(([f, t]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination);
+        o.type = 'square';
+        o.frequency.value = f;
+        g.gain.setValueAtTime(0.25, c.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.12);
+        o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.15);
+      });
+    }
+  },
+  {
+    name: "wow",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(350, c.currentTime);
+      o.frequency.linearRampToValueAtTime(650, c.currentTime + 0.08);
+      o.frequency.linearRampToValueAtTime(280, c.currentTime + 0.45);
+      g.gain.setValueAtTime(0.5, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.55);
+      o.start(); o.stop(c.currentTime + 0.6);
+    }
+  },
+  {
+    name: "notification",
+    play: function() {
+      const c = ctx();
+      [[880, 0], [1108, 0.1], [1318, 0.2]].forEach(([f, t]) => {
+        const o = c.createOscillator(), g = c.createGain();
+        o.connect(g); g.connect(c.destination);
+        o.type = 'sine'; o.frequency.value = f;
+        g.gain.setValueAtTime(0.3, c.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + t + 0.18);
+        o.start(c.currentTime + t); o.stop(c.currentTime + t + 0.22);
+      });
+    }
+  },
+  {
+    name: "metal pipe",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'triangle';
+      o.frequency.setValueAtTime(1200, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(400, c.currentTime + 0.4);
+      g.gain.setValueAtTime(0.5, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.5);
+      o.start(); o.stop(c.currentTime + 0.55);
+    }
+  },
+  {
+    name: "oof",
+    play: function() {
+      const c = ctx();
+      const o = c.createOscillator(), g = c.createGain();
+      o.connect(g); g.connect(c.destination);
+      o.type = 'sine';
+      o.frequency.setValueAtTime(500, c.currentTime);
+      o.frequency.exponentialRampToValueAtTime(200, c.currentTime + 0.3);
+      g.gain.setValueAtTime(0.6, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.001, c.currentTime + 0.35);
+      o.start(); o.stop(c.currentTime + 0.4);
+    }
+  },
+];
 
 function fireAlarms(count) {
-  const types = ['sine', 'square', 'sawtooth', 'triangle'];
-  const freqs = [220, 330, 440, 550, 660, 880, 1100, 277, 370, 494, 740, 987];
-  const useUrls = SOUND_URLS.length > 0;
-
   for (let i = 0; i < count; i++) {
-    const delay = (i * 0.09) % 3;
-    if (useUrls) {
-      const url = SOUND_URLS[Math.floor(Math.random() * SOUND_URLS.length)];
-      playUrl(url, delay);
-    } else {
-      const freq = freqs[i % freqs.length] * (1 + (i * 0.05));
-      const type = types[i % types.length];
-      playBeep(freq, type, delay, 1.2);
-    }
+    const delay = i * 0.09;
+    const sound = SOUNDS[Math.floor(Math.random() * SOUNDS.length)];
+    setTimeout(() => { try { sound.play(); } catch(e) {} }, delay * 1000);
   }
 }
 
@@ -168,13 +285,11 @@ function startChaos(count) {
   document.getElementById('btn-stop').style.display = 'block';
   document.getElementById('btn-test').style.display = 'none';
   fireAlarms(count);
-  chaosInterval = setInterval(() => fireAlarms(count), count * 90 + 2500);
+  chaosInterval = setInterval(() => fireAlarms(count), Math.max(count * 95 + 2500, 3500));
 }
 
 function stopChaos() {
   if (chaosInterval) { clearInterval(chaosInterval); chaosInterval = null; }
-  activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
-  activeSources = [];
   document.querySelector('.app').classList.remove('ringing');
   document.getElementById('btn-stop').style.display = 'none';
   document.getElementById('btn-test').style.display = 'block';
@@ -192,8 +307,7 @@ function addAlarm() {
   const m = parseInt(document.getElementById('alarm-m').value);
   const count = parseInt(document.getElementById('alarm-count').value);
   if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
-    document.getElementById('status').textContent = 'invalid time entered';
-    return;
+    document.getElementById('status').textContent = 'invalid time'; return;
   }
   const t = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
   alarms.push({ time: t, count, triggered: false });
@@ -201,24 +315,26 @@ function addAlarm() {
   document.getElementById('status').textContent = 'alarm set for ' + t + ' — ' + count + ' sounds';
 }
 
-function deleteAlarm(i) {
-  alarms.splice(i, 1);
-  renderAlarms();
-}
+function deleteAlarm(i) { alarms.splice(i, 1); renderAlarms(); }
 
 function renderAlarms() {
   const list = document.getElementById('alarms-list');
-  const label = document.getElementById('alarms-label');
-  label.style.display = alarms.length ? 'block' : 'none';
+  document.getElementById('alarms-label').style.display = alarms.length ? 'block' : 'none';
   list.innerHTML = alarms.map((a, i) => `
     <div class="alarm-item">
       <div>
         <div class="alarm-time">${a.time}</div>
-        <div class="alarm-meta">${a.count} simultaneous alarms</div>
+        <div class="alarm-meta">${a.count} simultaneous sounds</div>
       </div>
       <button class="alarm-del" onclick="deleteAlarm(${i})">✕</button>
     </div>
   `).join('');
+}
+
+function buildGrid() {
+  document.getElementById('sound-grid').innerHTML = SOUNDS.map((s, i) =>
+    `<button class="sound-btn" onclick="SOUNDS[${i}].play()">${s.name}</button>`
+  ).join('');
 }
 
 function updateClock() {
@@ -231,7 +347,7 @@ function updateClock() {
   alarms.forEach(a => {
     if (a.time === cur && !a.triggered) {
       a.triggered = true;
-      document.getElementById('status').textContent = 'ALARM GOING OFF — ' + a.count + ' sounds!';
+      document.getElementById('status').textContent = 'ALARM! ' + a.time + ' — ' + a.count + ' sounds!';
       startChaos(a.count);
     }
     if (a.time !== cur) a.triggered = false;
@@ -243,6 +359,7 @@ document.getElementById('alarm-count').addEventListener('input', function() {
   document.getElementById('count-label').textContent = this.value;
 });
 
+buildGrid();
 setInterval(updateClock, 1000);
 updateClock();
 </script>
