@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Chaos Alarm</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #0a0a0a; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .app { width: 100%; max-width: 420px; padding: 2rem 1.5rem; }
+  h1 { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; }
+  .sub { font-size: 14px; color: #666; margin-bottom: 2rem; }
+  .clock { font-size: 56px; font-weight: 700; text-align: center; letter-spacing: 4px; font-variant-numeric: tabular-nums; margin-bottom: 2rem; font-family: monospace; }
+  .card { background: #161616; border: 1px solid #222; border-radius: 16px; padding: 1.25rem; margin-bottom: 1rem; }
+  .card label { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 1px; display: block; margin-bottom: 10px; }
+  .time-row { display: flex; align-items: center; gap: 8px; }
+  .time-row input[type=number] { flex: 1; background: #0a0a0a; border: 1px solid #333; border-radius: 10px; color: #fff; font-size: 24px; font-family: monospace; text-align: center; padding: 10px; outline: none; }
+  .time-row input[type=number]:focus { border-color: #555; }
+  .sep { font-size: 28px; color: #444; }
+  .slider-row { display: flex; align-items: center; gap: 12px; }
+  .slider-row input[type=range] { flex: 1; accent-color: #E24B4A; }
+  .slider-val { font-size: 20px; font-weight: 700; font-family: monospace; min-width: 32px; text-align: right; }
+  .btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; border-radius: 12px; border: none; cursor: pointer; margin-bottom: 10px; transition: opacity 0.15s, transform 0.1s; }
+  .btn:active { transform: scale(0.98); }
+  .btn-add { background: #fff; color: #000; }
+  .btn-test { background: #E24B4A; color: #fff; }
+  .btn-stop { background: #1D9E75; color: #fff; display: none; }
+  .btn:hover { opacity: 0.88; }
+  .status { text-align: center; font-size: 13px; color: #666; margin-bottom: 1rem; min-height: 18px; }
+  .alarms-label { font-size: 11px; color: #444; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; margin-top: 0.5rem; }
+  .alarm-item { display: flex; justify-content: space-between; align-items: center; background: #161616; border: 1px solid #222; border-radius: 12px; padding: 12px 16px; margin-bottom: 8px; }
+  .alarm-time { font-family: monospace; font-size: 18px; font-weight: 700; }
+  .alarm-meta { font-size: 12px; color: #666; margin-top: 2px; }
+  .alarm-del { background: none; border: none; color: #444; font-size: 18px; cursor: pointer; padding: 0 4px; }
+  .alarm-del:hover { color: #E24B4A; }
+  .ringing { animation: shake 0.25s infinite; }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+
+  /* 
+  =============================================
+  HOW TO ADD YOUR OWN SOUNDS FROM MYINSTANTS
+  =============================================
+  1. Go to myinstants.com and find a sound you want
+  2. Right-click the orange PLAY button → "Copy link address"
+     OR right-click → "Save audio as" to download the MP3
+  3. Add the URL or file path to the SOUND_URLS array below
+  4. The app will randomly pick from your list each time an alarm fires
+
+  Example URLs look like:
+  "https://www.myinstants.com/media/sounds/your-sound.mp3"
+  =============================================
+  */
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>Chaos Alarm</h1>
+  <p class="sub">wake up. no choice.</p>
+
+  <div class="clock" id="clock">00:00:00</div>
+
+  <div class="card">
+    <label>alarm time</label>
+    <div class="time-row">
+      <input type="number" id="alarm-h" min="0" max="23" value="07" />
+      <span class="sep">:</span>
+      <input type="number" id="alarm-m" min="0" max="59" value="00" />
+    </div>
+  </div>
+
+  <div class="card">
+    <label>number of alarms — <span id="count-label">50</span></label>
+    <div class="slider-row">
+      <input type="range" id="alarm-count" min="1" max="50" value="50" step="1" />
+      <span class="slider-val" id="count-val">50</span>
+    </div>
+  </div>
+
+  <button class="btn btn-add" onclick="addAlarm()">+ schedule alarm</button>
+  <button class="btn btn-test" id="btn-test" onclick="testChaos()">test the chaos</button>
+  <button class="btn btn-stop" id="btn-stop" onclick="stopChaos()">STOP THE CHAOS</button>
+
+  <div class="status" id="status"></div>
+
+  <div class="alarms-label" id="alarms-label" style="display:none">scheduled alarms</div>
+  <div id="alarms-list"></div>
+</div>
+
+<script>
+// =============================================
+// ADD YOUR MYINSTANTS SOUND URLS HERE
+// =============================================
+const SOUND_URLS = [
+  "https://www.myinstants.com/en/instant/fahhhhhhhhhhhhhh-3525/"
+  "https://www.myinstants.com/en/instant/go-and-ask-your-grandfather-23235/"
+  "https://www.myinstants.com/en/instant/wetin-be-this-sound-comedy-by-kenny-90115/"
+  "https://www.myinstants.com/en/instant/technoloyia-technologia-tecnologia-84060/"
+  "https://www.myinstants.com/en/instant/let-him-cook-now-39893/"
+  "https://www.myinstants.com/en/instant/musica-triste-meme-41946/"
+  "https://www.myinstants.com/en/instant/ehee-22110/"
+  "https://www.myinstants.com/en/instant/haha-funny-laugh-93061/"
+  "https://www.myinstants.com/en/instant/romanceeeeeeeeeeeeee-29042/"
+  // Paste your MP3 URLs here like:
+  // "https://www.myinstants.com/media/sounds/example.mp3",
+  // "https://www.myinstants.com/media/sounds/another.mp3",
+];
+// If no URLs are added, the app uses generated beep sounds instead
+// =============================================
+
+const alarms = [];
+let audioCtx = null;
+let chaosInterval = null;
+let activeSources = [];
+
+function getCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function playBeep(freq, type, delay, dur) {
+  const ctx = getCtx();
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.connect(gain);
+  gain.connect(ctx.destination);
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, ctx.currentTime + delay);
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.8, ctx.currentTime + delay + 0.15);
+  osc.frequency.exponentialRampToValueAtTime(freq * 0.8, ctx.currentTime + delay + 0.3);
+  gain.gain.setValueAtTime(0.1, ctx.currentTime + delay);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + delay + dur);
+  osc.start(ctx.currentTime + delay);
+  osc.stop(ctx.currentTime + delay + dur + 0.05);
+  activeSources.push(osc);
+}
+
+function playUrl(url, delay) {
+  const ctx = getCtx();
+  fetch(url)
+    .then(r => r.arrayBuffer())
+    .then(buf => ctx.decodeAudioData(buf))
+    .then(decoded => {
+      const source = ctx.createBufferSource();
+      const gain = ctx.createGain();
+      source.buffer = decoded;
+      source.connect(gain);
+      gain.connect(ctx.destination);
+      gain.gain.setValueAtTime(0.7, ctx.currentTime + delay);
+      source.start(ctx.currentTime + delay);
+      activeSources.push(source);
+    })
+    .catch(() => {});
+}
+
+function fireAlarms(count) {
+  const types = ['sine', 'square', 'sawtooth', 'triangle'];
+  const freqs = [220, 330, 440, 550, 660, 880, 1100, 277, 370, 494, 740, 987];
+  const useUrls = SOUND_URLS.length > 0;
+
+  for (let i = 0; i < count; i++) {
+    const delay = (i * 0.09) % 3;
+    if (useUrls) {
+      const url = SOUND_URLS[Math.floor(Math.random() * SOUND_URLS.length)];
+      playUrl(url, delay);
+    } else {
+      const freq = freqs[i % freqs.length] * (1 + (i * 0.05));
+      const type = types[i % types.length];
+      playBeep(freq, type, delay, 1.2);
+    }
+  }
+}
+
+function startChaos(count) {
+  stopChaos();
+  document.querySelector('.app').classList.add('ringing');
+  document.getElementById('btn-stop').style.display = 'block';
+  document.getElementById('btn-test').style.display = 'none';
+  fireAlarms(count);
+  chaosInterval = setInterval(() => fireAlarms(count), count * 90 + 2500);
+}
+
+function stopChaos() {
+  if (chaosInterval) { clearInterval(chaosInterval); chaosInterval = null; }
+  activeSources.forEach(s => { try { s.stop(); } catch(e) {} });
+  activeSources = [];
+  document.querySelector('.app').classList.remove('ringing');
+  document.getElementById('btn-stop').style.display = 'none';
+  document.getElementById('btn-test').style.display = 'block';
+  document.getElementById('status').textContent = '';
+}
+
+function testChaos() {
+  const count = parseInt(document.getElementById('alarm-count').value);
+  document.getElementById('status').textContent = 'firing ' + count + ' alarms...';
+  startChaos(count);
+}
+
+function addAlarm() {
+  const h = parseInt(document.getElementById('alarm-h').value);
+  const m = parseInt(document.getElementById('alarm-m').value);
+  const count = parseInt(document.getElementById('alarm-count').value);
+  if (isNaN(h) || isNaN(m) || h < 0 || h > 23 || m < 0 || m > 59) {
+    document.getElementById('status').textContent = 'invalid time entered';
+    return;
+  }
+  const t = String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0');
+  alarms.push({ time: t, count, triggered: false });
+  renderAlarms();
+  document.getElementById('status').textContent = 'alarm set for ' + t + ' — ' + count + ' sounds';
+}
+
+function deleteAlarm(i) {
+  alarms.splice(i, 1);
+  renderAlarms();
+}
+
+function renderAlarms() {
+  const list = document.getElementById('alarms-list');
+  const label = document.getElementById('alarms-label');
+  label.style.display = alarms.length ? 'block' : 'none';
+  list.innerHTML = alarms.map((a, i) => `
+    <div class="alarm-item">
+      <div>
+        <div class="alarm-time">${a.time}</div>
+        <div class="alarm-meta">${a.count} simultaneous alarms</div>
+      </div>
+      <button class="alarm-del" onclick="deleteAlarm(${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateClock() {
+  const now = new Date();
+  const h = String(now.getHours()).padStart(2,'0');
+  const m = String(now.getMinutes()).padStart(2,'0');
+  const s = String(now.getSeconds()).padStart(2,'0');
+  document.getElementById('clock').textContent = h + ':' + m + ':' + s;
+  const cur = h + ':' + m;
+  alarms.forEach(a => {
+    if (a.time === cur && !a.triggered) {
+      a.triggered = true;
+      document.getElementById('status').textContent = 'ALARM GOING OFF — ' + a.count + ' sounds!';
+      startChaos(a.count);
+    }
+    if (a.time !== cur) a.triggered = false;
+  });
+}
+
+document.getElementById('alarm-count').addEventListener('input', function() {
+  document.getElementById('count-val').textContent = this.value;
+  document.getElementById('count-label').textContent = this.value;
+});
+
+setInterval(updateClock, 1000);
+updateClock();
+</script>
+</body>
+</html>
